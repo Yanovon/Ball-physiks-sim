@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ball Physik Simulation</title>
+<style>
+  :root{
+    --bg:#0b0b0b;
+    --panel:#2b2b2b;
+    --panel-2:#363636;
+    --accent: #0099ff;
+    --text: #97d6ff;
+    --muted: #cccccc;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial;}
+  body{background:var(--bg);color:var(--text);display:flex;flex-direction:column;}
+  header{display:flex;gap:12px;align-items:center;padding:12px 18px;background:linear-gradient(90deg,#06101844,transparent);box-shadow:inset 0 -1px 0 rgba(255,255,255,0.02)}
+  header h1{font-size:16px;margin:0;color:var(--muted);flex:1}
+  header .hdr-controls{display:flex;gap:8px}
+  #main{flex:1;display:flex;overflow:hidden}
+  #leftPanel, #rightPanel{
+    width:320px;padding:12px;box-sizing:border-box;background:var(--panel);overflow:auto;
+  }
+  #rightPanel{background:var(--panel-2);}
+  #canvasWrap{flex:1;display:flex;align-items:stretch;justify-content:center;position:relative}
+  canvas{background:transparent;display:block;max-width:100%}
+  .btn-row{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .btn{background:#3c3c3c;border:1px solid rgba(255,255,255,0.04);color:var(--text);padding:8px 10px;border-radius:6px;cursor:pointer}
+  .btn.toggle.on{background:#4b7eff}
+  .status{font-size:13px;margin-bottom:10px;color:var(--muted)}
+  .group{margin-bottom:18px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type=range]{width:100%}
+  .small{width:72px}
+  .color-row{display:flex;gap:6px}
+  .statBox{position:absolute;right:12px;top:12px;background:rgba(0,0,0,0.4);padding:8px 12px;border-radius:8px;color:var(--muted);font-size:13px}
+  .ghost-line{position:absolute;pointer-events:none}
+  .footer{padding:10px 14px;font-size:13px;color:var(--muted);background:linear-gradient(90deg,transparent,#00000033);text-align:center}
+  a.link{color:var(--accent);text-decoration:none}
+  .slider-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .panel-title{font-weight:600;color:var(--text);margin-bottom:8px}
+  .note{font-size:12px;color:#bcbcbc}
+
+  /* Mobile / Tablet / Touch adjustments */
+  body.touch .btn{padding:12px 14px;font-size:15px}
+  body.touch input[type=range]{height:32px}
+  body.touch label{font-size:15px}
+
+  /* Responsive rules */
+  @media (max-width: 800px){
+    #leftPanel, #rightPanel{width:100%;height:42%;box-shadow:0 -8px 24px rgba(0,0,0,0.6);position:fixed;left:0;right:0;bottom:0;z-index:50;display:none;border-top:1px solid rgba(255,255,255,0.02)}
+    #leftPanel.panel-open, #rightPanel.panel-open{display:block}
+    #main{flex-direction:column}
+    #canvasWrap{order:0;flex:1;min-height:300px}
+    #leftPanel{background:var(--panel);}
+    #rightPanel{background:var(--panel-2);top:auto}
+    /* make HUD smaller and touch friendly */
+    .statBox{right:8px;top:8px;padding:10px 14px}
+  }
+
+  /* tablet tweaks */
+  @media (min-width:801px) and (max-width:1100px){
+    #leftPanel, #rightPanel{width:260px}
+  }
+
+  /* device class fine-tuning */
+  body.device-mobile #leftPanel, body.device-mobile #rightPanel{font-size:15px}
+  body.device-desktop #leftPanel, body.device-desktop #rightPanel{font-size:13px}
+
+  /* small visual for header control buttons */
+  .hdr-controls .btn{padding:6px 10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ball Physik Simulation</h1>
+  <div class="hdr-controls">
+    <button id="controlsBtn" class="btn">Controls</button>
+    <button id="toolsBtn" class="btn">Tools</button>
+  </div>
+</header>
+
+<div id="main">
+  <aside id="leftPanel">
+    <div class="btn-row">
+      <button id="clearBtn" class="btn">Clear Balls</button>
+      <button id="toggleDeleteBtn" class="btn">Delete Mode: OFF</button>
+    </div>
+
+    <div class="group">
+      <div class="panel-title">GLOBAL</div>
+      <div class="row"><div class="slider-label"><label>Gravity</label><div id="gravVal" class="note"></div></div></div>
+      <input id="gravity" type="range" min="0" max="5000" step="1" value="2000">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Restitution</label><div id="restVal" class="note"></div></div>
+      <input id="restitution" type="range" min="0" max="1" step="0.01" value="0.9">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Resting Restitution</label><div id="rest2Val" class="note"></div></div>
+      <input id="resting_restitution" type="range" min="0" max="1" step="0.01" value="0">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Bounce Threshold</label><div id="bounceVal" class="note"></div></div>
+      <input id="bounce_threshold" type="range" min="0" max="1000" step="1" value="120">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Linear Damping</label><div id="linDVal" class="note"></div></div>
+      <input id="linear_damping" type="range" min="0" max="1" step="0.001" value="0.999">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Position Iter</label><div id="iterVal" class="note"></div></div>
+      <input id="pos_iter" type="range" min="0" max="40" step="1" value="5">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Correction %</label><div id="pcpVal" class="note"></div></div>
+      <input id="pos_correction" type="range" min="0" max="1" step="0.01" value="0.8">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Position Slop</label><div id="slopVal" class="note"></div></div>
+      <input id="pos_slop" type="range" min="0" max="10" step="0.1" value="0.5">
+
+      <div style="height:10px"></div>
+      <div class="slider-label"><label>Power Scale</label><div id="powerVal" class="note"></div></div>
+      <input id="power_scale" type="range" min="0" max="20" step="0.1" value="6">
+    </div>
+
+  </aside>
+
+  <div id="canvasWrap">
+    <canvas id="world"></canvas>
+    <div id="hud" class="statBox">FPS: --<br>Balls: 0</div>
+  </div>
+
+  <aside id="rightPanel">
+    <div class="panel-title">LOCAL</div>
+
+    <div class="group">
+      <div class="slider-label"><label>Next Radius</label><div id="nrVal" class="note"></div></div>
+      <input id="next_radius" type="range" min="5" max="300" step="1" value="30">
+
+      <div style="height:8px"></div>
+      <div class="slider-label"><label>Next Mass</label><div id="nmVal" class="note"></div></div>
+      <input id="next_mass" type="range" min="0.01" max="10" step="0.01" value="1.0">
+
+      <div style="height:8px"></div>
+      <label>Next Color</label>
+      <div class="color-row">
+        <input id="colR" type="range" min="0" max="255" value="255">
+        <input id="colG" type="range" min="0" max="255" value="255">
+        <input id="colB" type="range" min="0" max="255" value="255">
+      </div>
+      <div style="height:6px"></div>
+      <div id="colorPreview" style="height:36px;border-radius:6px;background:#fff;border:1px solid rgba(0,0,0,0.12)"></div>
+    </div>
+
+    <div class="group">
+      <div class="panel-title">Hilfe</div>
+      <div class="note">
+        - Linksklick + Ziehen außerhalb der Panels: neuen Ball spawnen (Zug = Geschwindigkeit).<br>
+        - Auf Ball klicken + ziehen: Kraft auf bestehenden Ball anwenden.<br>
+        - Mausrad (auf Touch: zwei Finger scrollen): erzeugt zusätzliche Bälle an Mausposition.<br>
+        - Delete Mode einschalten und Ball anklicken zum Löschen.<br>
+        - Auf Handy: Controls/Tools Button im Header benutzen, um die Panels zu öffnen.
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<script>
+(() => {
+  // Canvas & resize with DPR handling
+  const canvas = document.getElementById('world');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  function resizeCanvas(){
+    const rectW = Math.max(600, window.innerWidth - 700);
+    const rectH = Math.max(400, window.innerHeight - 160);
+    // On small screens, make canvas occupy available space
+    const isSmall = window.innerWidth <= 800;
+    const cssWidth = isSmall ? window.innerWidth : rectW;
+    const cssHeight = isSmall ? Math.max(300, window.innerHeight - 200) : rectH;
+
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // UI references
+  const hud = document.getElementById('hud');
+  const clearBtn = document.getElementById('clearBtn');
+  const toggleDeleteBtn = document.getElementById('toggleDeleteBtn');
+  const leftPanel = document.getElementById('leftPanel');
+  const rightPanel = document.getElementById('rightPanel');
+  const controlsBtn = document.getElementById('controlsBtn');
+  const toolsBtn = document.getElementById('toolsBtn');
+
+  // Device detection
+  function detectDevice(){
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+    const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0;
+    const width = window.innerWidth;
+    let type = 'desktop';
+    if (isTouch && width <= 800) type = 'mobile';
+    else if (isTouch && width > 800 && width <= 1100) type = 'tablet';
+    else type = 'desktop';
+    document.body.classList.remove('device-mobile','device-tablet','device-desktop','touch');
+    document.body.classList.add(type === 'mobile' ? 'device-mobile' : type === 'tablet' ? 'device-tablet' : 'device-desktop');
+    if (isTouch) document.body.classList.add('touch');
+    return { type, isTouch };
+  }
+  let device = detectDevice();
+  window.addEventListener('resize', () => { device = detectDevice(); resizeCanvas(); });
+
+  // Panels toggle for small screens
+  controlsBtn.addEventListener('click', () => {
+    leftPanel.classList.toggle('panel-open');
+    // close other
+    rightPanel.classList.remove('panel-open');
+  });
+  toolsBtn.addEventListener('click', () => {
+    rightPanel.classList.toggle('panel-open');
+    leftPanel.classList.remove('panel-open');
+  });
+
+  // close panels when clicking outside on small screens
+  window.addEventListener('click', (e) => {
+    if (window.innerWidth <= 800){
+      const inLeft = leftPanel.contains(e.target) || controlsBtn.contains(e.target);
+      const inRight = rightPanel.contains(e.target) || toolsBtn.contains(e.target);
+      if (!inLeft) leftPanel.classList.remove('panel-open');
+      if (!inRight) rightPanel.classList.remove('panel-open');
+    }
+  });
+
+  // sliders
+  const gravityEl = document.getElementById('gravity');
+  const restitutionEl = document.getElementById('restitution');
+  const restingRestEl = document.getElementById('resting_restitution');
+  const bounceEl = document.getElementById('bounce_threshold');
+  const linearDampEl = document.getElementById('linear_damping');
+  const posIterEl = document.getElementById('pos_iter');
+  const posCorrEl = document.getElementById('pos_correction');
+  const posSlopEl = document.getElementById('pos_slop');
+  const powerEl = document.getElementById('power_scale');
+
+  const nextRadiusEl = document.getElementById('next_radius');
+  const nextMassEl = document.getElementById('next_mass');
+  const colREl = document.getElementById('colR');
+  const colGEl = document.getElementById('colG');
+  const colBEl = document.getElementById('colB');
+  const colorPreview = document.getElementById('colorPreview');
+
+  // value displays
+  const gravVal = document.getElementById('gravVal');
+  const restVal = document.getElementById('restVal');
+  const rest2Val = document.getElementById('rest2Val');
+  const bounceVal = document.getElementById('bounceVal');
+  const linDVal = document.getElementById('linDVal');
+  const iterVal = document.getElementById('iterVal');
+  const pcpVal = document.getElementById('pcpVal');
+  const slopVal = document.getElementById('slopVal');
+  const powerVal = document.getElementById('powerVal');
+  const nrVal = document.getElementById('nrVal');
+  const nmVal = document.getElementById('nmVal');
+
+  // Simulation constants / state (initial values match Python)
+  let GRAVITY = parseFloat(gravityEl.value); // px/s^2
+  let RESTITUTION = parseFloat(restitutionEl.value);
+  let RESTING_RESTITUTION = parseFloat(restingRestEl.value);
+  let BOUNCE_THRESHOLD = parseFloat(bounceEl.value);
+  let LINEAR_DAMPING = parseFloat(linearDampEl.value);
+  let POSITION_ITER_LIMIT = parseInt(posIterEl.value);
+  let POSITION_CORRECTION_PERCENT = parseFloat(posCorrEl.value);
+  let POSITION_SLOP = parseFloat(posSlopEl.value);
+  let POWER_SCALE = parseFloat(powerEl.value);
+
+  const SLEEP_VEL = 5.0;
+  const GROUND_SLEEP_VEL = 40.0;
+
+  let next_radius = parseInt(nextRadiusEl.value);
+  let next_mass = parseFloat(nextMassEl.value);
+  let next_color = [parseInt(colREl.value), parseInt(colGEl.value), parseInt(colBEl.value)];
+
+  // UI state
+  let delete_mode = false;
+
+  clearBtn.addEventListener('click', () => { circles.length = 0; });
+  toggleDeleteBtn.addEventListener('click', () => {
+    delete_mode = !delete_mode;
+    toggleDeleteBtn.textContent = delete_mode ? 'Delete Mode: ON' : 'Delete Mode: OFF';
+    toggleDeleteBtn.classList.toggle('on', delete_mode);
+  });
+
+  function updateUIValues(){
+    gravVal.textContent = GRAVITY.toFixed(0);
+    restVal.textContent = RESTITUTION.toFixed(2);
+    rest2Val.textContent = RESTING_RESTITUTION.toFixed(2);
+    bounceVal.textContent = BOUNCE_THRESHOLD.toFixed(0);
+    linDVal.textContent = LINEAR_DAMPING.toFixed(3);
+    iterVal.textContent = POSITION_ITER_LIMIT;
+    pcpVal.textContent = POSITION_CORRECTION_PERCENT.toFixed(2);
+    slopVal.textContent = POSITION_SLOP.toFixed(2);
+    powerVal.textContent = POWER_SCALE.toFixed(2);
+    nrVal.textContent = next_radius;
+    nmVal.textContent = next_mass.toFixed(2);
+    colorPreview.style.background = `rgb(${next_color[0]},${next_color[1]},${next_color[2]})`;
+  }
+  updateUIValues();
+
+  // Wire inputs
+  gravityEl.addEventListener('input', e => { GRAVITY = parseFloat(e.target.value); updateUIValues(); });
+  restitutionEl.addEventListener('input', e => { RESTITUTION = parseFloat(e.target.value); updateUIValues(); });
+  restingRestEl.addEventListener('input', e => { RESTING_RESTITUTION = parseFloat(e.target.value); updateUIValues(); });
+  bounceEl.addEventListener('input', e => { BOUNCE_THRESHOLD = parseFloat(e.target.value); updateUIValues(); });
+  linearDampEl.addEventListener('input', e => { LINEAR_DAMPING = parseFloat(e.target.value); updateUIValues(); });
+  posIterEl.addEventListener('input', e => { POSITION_ITER_LIMIT = parseInt(e.target.value); updateUIValues(); });
+  posCorrEl.addEventListener('input', e => { POSITION_CORRECTION_PERCENT = parseFloat(e.target.value); updateUIValues(); });
+  posSlopEl.addEventListener('input', e => { POSITION_SLOP = parseFloat(e.target.value); updateUIValues(); });
+  powerEl.addEventListener('input', e => { POWER_SCALE = parseFloat(e.target.value); updateUIValues(); });
+
+  nextRadiusEl.addEventListener('input', e => { next_radius = parseInt(e.target.value); updateUIValues(); });
+  nextMassEl.addEventListener('input', e => { next_mass = parseFloat(e.target.value); if(next_mass<=0) next_mass=0.01; updateUIValues(); });
+  colREl.addEventListener('input', e => { next_color[0] = parseInt(e.target.value); updateUIValues(); });
+  colGEl.addEventListener('input', e => { next_color[1] = parseInt(e.target.value); updateUIValues(); });
+  colBEl.addEventListener('input', e => { next_color[2] = parseInt(e.target.value); updateUIValues(); });
+
+  // Simulation objects
+  class Circle {
+    constructor(x,y,r,color,mass){
+      this.x = x; this.y = y;
+      this.vx = 0; this.vy = 0;
+      this.radius = Math.max(1, Math.round(r));
+      this.mass = (typeof mass === 'number') ? mass : 1.0;
+      if (this.mass <= 0) this.mass = 0.01;
+      this.inv_mass = 1.0 / this.mass;
+      this.color = color.slice();
+    }
+    update(dt){
+      this.vy += GRAVITY * dt;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.vx *= LINEAR_DAMPING;
+      this.vy *= LINEAR_DAMPING;
+      if (Math.abs(this.vx) < SLEEP_VEL) this.vx = 0;
+      if (Math.abs(this.vy) < SLEEP_VEL) this.vy = 0;
+
+      // ground collisions
+      if (this.y + this.radius > canvas.clientHeight){
+        this.y = canvas.clientHeight - this.radius;
+        if (Math.abs(this.vy) < GROUND_SLEEP_VEL) this.vy = 0;
+        else this.vy *= -RESTITUTION;
+      }
+      if (this.y - this.radius < 0){
+        this.y = this.radius;
+        this.vy *= -RESTITUTION;
+      }
+      if (this.x + this.radius > canvas.clientWidth){
+        this.x = canvas.clientWidth - this.radius;
+        this.vx *= -RESTITUTION;
+      }
+      if (this.x - this.radius < 0){
+        this.x = this.radius;
+        this.vx *= -RESTITUTION;
+      }
+    }
+    draw(ctx){
+      ctx.beginPath();
+      ctx.fillStyle = `rgb(${this.color[0]},${this.color[1]},${this.color[2]})`;
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // collision handling (position correction + impulse)
+  function collide(c1, c2){
+    let dx = c2.x - c1.x;
+    let dy = c2.y - c1.y;
+    let distSq = dx*dx + dy*dy;
+    let minDist = c1.radius + c2.radius;
+    let minDistSq = minDist * minDist;
+    if (distSq >= minDistSq || distSq === 0) return false;
+    let dist = Math.sqrt(distSq);
+    // normal
+    let nx = dx / dist;
+    let ny = dy / dist;
+    // overlap
+    let overlap = minDist - dist;
+    // positional correction
+    let correction = Math.max(overlap - POSITION_SLOP, 0.0) / (c1.inv_mass + c2.inv_mass);
+    c1.x -= nx * correction * POSITION_CORRECTION_PERCENT * c1.inv_mass;
+    c1.y -= ny * correction * POSITION_CORRECTION_PERCENT * c1.inv_mass;
+    c2.x += nx * correction * POSITION_CORRECTION_PERCENT * c2.inv_mass;
+    c2.y += ny * correction * POSITION_CORRECTION_PERCENT * c2.inv_mass;
+
+    // relative velocity
+    let rvx = c2.vx - c1.vx;
+    let rvy = c2.vy - c1.vy;
+    let velNormal = rvx*nx + rvy*ny;
+    if (velNormal > 0) return true; // moving apart, no impulse
+    let e = (Math.abs(velNormal) > BOUNCE_THRESHOLD) ? RESTITUTION : RESTING_RESTITUTION;
+    let j = -(1 + e) * velNormal;
+    j /= (c1.inv_mass + c2.inv_mass);
+    let ix = j * nx;
+    let iy = j * ny;
+    c1.vx -= ix * c1.inv_mass;
+    c1.vy -= iy * c1.inv_mass;
+    c2.vx += ix * c2.inv_mass;
+    c2.vy += iy * c2.inv_mass;
+    return true;
+  }
+
+  // spatial hash
+  function buildSpatialHash(circles, cellSize){
+    const grid = new Map();
+    for (let i = 0; i < circles.length; i++){
+      const c = circles[i];
+      const cx = Math.floor(c.x / cellSize);
+      const cy = Math.floor(c.y / cellSize);
+      const key = `${cx},${cy}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(i);
+    }
+    return grid;
+  }
+
+  let circles = [];
+
+  // input handling state
+  let charging = false;
+  let spawn_mode = false;
+  let selected_circle = null;
+  let spawn_pos = [0,0];
+
+  // Helper: convert client coords to canvas local coords (consider CSS size)
+  function clientToCanvas(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    // clamp
+    return [Math.max(0, Math.min(x, rect.width)), Math.max(0, Math.min(y, rect.height))];
+  }
+
+  function pointInUI(clientX, clientY){
+    // if panels are visible and the click/touch inside them, treat as UI
+    const rectL = leftPanel.getBoundingClientRect();
+    const rectR = rightPanel.getBoundingClientRect();
+    const inLeft = leftPanel.classList.contains('panel-open') || window.innerWidth > 800;
+    const inRight = rightPanel.classList.contains('panel-open') || window.innerWidth > 800;
+
+    if (inLeft && (clientX >= rectL.left && clientX <= rectL.right && clientY >= rectL.top && clientY <= rectL.bottom)) return true;
+    if (inRight && (clientX >= rectR.left && clientX <= rectR.right && clientY >= rectR.top && clientY <= rectR.bottom)) return true;
+    return false;
+  }
+
+  // Reusable pointer handlers (work for mouse & touch)
+  function pointerDown(clientX, clientY){
+    // simulate left button only
+    if (pointInUI(clientX, clientY)) return; // clicking UI
+    const [x,y] = clientToCanvas(clientX, clientY);
+
+    // find topmost circle under cursor
+    let foundIndex = -1;
+    for (let i = circles.length - 1; i >= 0; i--){
+      const c = circles[i];
+      if ((c.x - x)*(c.x - x) + (c.y - y)*(c.y - y) <= c.radius * c.radius){
+        foundIndex = i; break;
+      }
+    }
+    if (foundIndex !== -1){
+      if (delete_mode){
+        circles.splice(foundIndex, 1);
+        return;
+      } else {
+        selected_circle = circles[foundIndex];
+        charging = true;
+        spawn_mode = false;
+        return;
+      }
+    }
+    // else start spawn
+    charging = true;
+    spawn_mode = true;
+    selected_circle = null;
+    spawn_pos = [x,y];
+  }
+
+  function pointerUp(clientX, clientY){
+    if (!charging) return;
+    const [mx,my] = clientToCanvas(clientX, clientY);
+    if (spawn_mode){
+      const dx = spawn_pos[0] - mx;
+      const dy = spawn_pos[1] - my;
+      const c = new Circle(spawn_pos[0], spawn_pos[1], next_radius, next_color.slice(), next_mass);
+      c.vx = dx * POWER_SCALE;
+      c.vy = dy * POWER_SCALE;
+      circles.push(c);
+    } else {
+      if (selected_circle){
+        const dx = selected_circle.x - mx;
+        const dy = selected_circle.y - my;
+        selected_circle.vx += dx * POWER_SCALE;
+        selected_circle.vy += dy * POWER_SCALE;
+      }
+    }
+    charging = false;
+    selected_circle = null;
+  }
+
+  // Mouse events call pointer handlers
+  canvas.addEventListener('mousedown', (evt) => {
+    if (evt.button !== 0) return;
+    pointerDown(evt.clientX, evt.clientY);
+  });
+
+  canvas.addEventListener('mouseup', (evt) => {
+    if (evt.button !== 0) return;
+    pointerUp(evt.clientX, evt.clientY);
+  });
+
+  canvas.addEventListener('mousemove', (evt) => {
+    lastMousePos = clientToCanvas(evt.clientX, evt.clientY);
+  });
+
+  // Touch events: translate to pointer handlers
+  canvas.addEventListener('touchstart', (evt) => {
+    if (evt.changedTouches && evt.changedTouches.length > 0){
+      evt.preventDefault(); // prevent scrolling when interacting with canvas
+      const t = evt.changedTouches[0];
+      pointerDown(t.clientX, t.clientY);
+      lastMousePos = clientToCanvas(t.clientX, t.clientY);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (evt) => {
+    if (evt.changedTouches && evt.changedTouches.length > 0){
+      evt.preventDefault();
+      const t = evt.changedTouches[0];
+      lastMousePos = clientToCanvas(t.clientX, t.clientY);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (evt) => {
+    if (evt.changedTouches && evt.changedTouches.length > 0){
+      evt.preventDefault();
+      const t = evt.changedTouches[0];
+      pointerUp(t.clientX, t.clientY);
+    }
+  }, { passive: false });
+
+  // wheel - keep as before, but prevent on touch devices where possible
+  canvas.addEventListener('wheel', (evt) => {
+    const mx = evt.clientX, my = evt.clientY;
+    if (pointInUI(mx,my)) return;
+    const rect = canvas.getBoundingClientRect();
+    const [x,y] = [mx - rect.left, my - rect.top];
+    const count = Math.min(10, Math.max(1, Math.abs(Math.round(evt.deltaY/100))));
+    for (let i=0;i<count;i++){
+      const c = new Circle(x + (Math.random()-0.5)*8, y + (Math.random()-0.5)*8, next_radius, next_color.slice(), next_mass);
+      circles.push(c);
+    }
+    evt.preventDefault();
+  }, { passive: false });
+
+  // Fixed timestep loop
+  const FIXED_DT = 1/120;
+  let accumulator = 0;
+  let lastTime = performance.now()/1000;
+
+  // FPS
+  let frameCount = 0;
+  let lastFPSTime = performance.now()/1000;
+  let showFPS = 0;
+
+  function step(){
+    const now = performance.now()/1000;
+    let frameDt = Math.min(now - lastTime, 0.1);
+    lastTime = now;
+    accumulator += frameDt;
+
+    // Process fixed steps
+    while (accumulator >= FIXED_DT){
+      // update physics
+      for (let c of circles) c.update(FIXED_DT);
+
+      if (circles.length > 1){
+        // choose cell size based on largest radius
+        let max_r = next_radius;
+        for (let c of circles) if (c.radius > max_r) max_r = c.radius;
+        const cellSize = Math.max(1.0, max_r*2.0);
+
+        const grid = buildSpatialHash(circles, cellSize);
+
+        // position correction iterations
+        for (let iter=0; iter<POSITION_ITER_LIMIT; iter++){
+          let any_collision = false;
+          for (let key of grid.keys()){
+            const [cellX, cellY] = key.split(',').map(n => parseInt(n));
+            const members = grid.get(key);
+            for (let a=0;a<members.length;a++){
+              const i = members[a];
+              const ci = circles[i];
+              for (let dx=-1; dx<=1; dx++){
+                for (let dy=-1; dy<=1; dy++){
+                  const nk = `${cellX+dx},${cellY+dy}`;
+                  if (!grid.has(nk)) continue;
+                  const neighbor = grid.get(nk);
+                  for (let j of neighbor){
+                    if (j <= i) continue;
+                    const cj = circles[j];
+                    const rx = cj.x - ci.x;
+                    const ry = cj.y - ci.y;
+                    const minDist = ci.radius + cj.radius;
+                    if (rx*rx + ry*ry >= minDist*minDist) continue;
+                    if (collide(ci, cj)) any_collision = true;
+                  }
+                }
+              }
+            }
+          }
+          if (!any_collision) break;
+        }
+      }
+
+      accumulator -= FIXED_DT;
+    }
+
+    // render
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);
+
+    for (let c of circles) c.draw(ctx);
+
+    // draw charging visuals
+    if (charging){
+      const mouse = lastMousePos;
+      let cx, cy, draw_radius;
+      if (spawn_mode){
+        cx = spawn_pos[0]; cy = spawn_pos[1];
+        draw_radius = next_radius;
+      } else if (selected_circle){
+        cx = selected_circle.x; cy = selected_circle.y;
+        draw_radius = selected_circle.radius;
+      } else {
+        cx = spawn_pos[0]; cy = spawn_pos[1];
+        draw_radius = next_radius;
+      }
+      const dx = cx - mouse[0];
+      const dy = cy - mouse[1];
+      ctx.strokeStyle = '#0096ff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, draw_radius, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + dx, cy + dy);
+      ctx.stroke();
+    }
+
+    // HUD
+    frameCount++;
+    const nowSec = performance.now()/1000;
+    if (nowSec - lastFPSTime > 1.0){
+      showFPS = frameCount;
+      frameCount = 0;
+      lastFPSTime = nowSec;
+    }
+    hud.innerHTML = `FPS: ${showFPS}<br>Balls: ${circles.length}`;
+
+    requestAnimationFrame(step);
+  }
+
+  // track last mouse for ghost rendering
+  let lastMousePos = [0,0];
+  canvas.addEventListener('mousemove', (e) => {
+    lastMousePos = clientToCanvas(e.clientX, e.clientY);
+  });
+
+  // Start loop
+  requestAnimationFrame(step);
+
+  // expose some debug functions on window (optional)
+  window.sim = {
+    circles,
+    addBall: (x,y,r,color,mass) => { circles.push(new Circle(x,y,r,color,mass)); },
+    clear: () => { circles.length = 0; }
+  };
+
+})();
+</script>
+</body>
+</html>
